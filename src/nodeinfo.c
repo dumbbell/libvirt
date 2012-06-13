@@ -692,6 +692,154 @@ error:
     VIR_FREE(map);
     return NULL;
 }
+#else
+#include <sys/types.h>
+#include <sys/sysctl.h>
+
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+
+static int
+freebsdNodeInfoMemoryPopulate(virNodeInfoPtr nodeinfo)
+{
+    int ret;
+    int mib[2] = { CTL_HW, HW_PHYSMEM };
+    size_t mem_len;
+
+    /* Get physical memory from hw.physmem sysctl. */
+    mem_len = sizeof(nodeinfo->memory);
+    ret = sysctl(mib, 2, (void *)&(nodeinfo->memory), &mem_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get system physical memory"));
+        return -1;
+    }
+
+    /* Convert to KB. */
+    nodeinfo->memory /= 1024;
+
+    return 0;
+}
+
+static int
+freebsdParseTopologyXML(const char *xml, virNodeInfoPtr nodeinfo)
+{
+    int ret;
+    unsigned int count;
+    xmlDocPtr doc;
+    xmlXPathContextPtr ctxt;
+
+    /* Parse XML document. */
+    doc = virXMLParseStringCtxt(xml, "kern.sched.topology_spec.xml", &ctxt);
+    if (doc == NULL) {
+        nodeReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                             _("failed to get CPU topology"));
+        return -1;
+    }
+
+    /* Number of NUMA nodes. */
+    ret = virXPathNodeSet("./group", ctxt, NULL);
+    if (ret < 0)
+        goto error;
+    nodeinfo->nodes = ret;
+
+    /* Number of sockets (or "packages" in the FreeBSD terminology). */
+    ret = virXPathNodeSet("./group[1]/children/group", ctxt, NULL);
+    if (ret < 0)
+        goto error;
+    nodeinfo->sockets = ret;
+
+    /* Number of cores. */
+    ret = virXPathNodeSet(
+        "./group[1]/children/group[1]/children/group", ctxt, NULL);
+    if (ret < 0)
+        goto error;
+    nodeinfo->cores = ret;
+
+    /* Number of threads. */
+    ret = virXPathUInt(
+        "string(./group[1]/children/group[1]/children/group[1]/cpu/@count)",
+        ctxt, &count);
+    if (ret < 0)
+        goto error;
+    nodeinfo->threads = count;
+
+    /* Number of CPUs. */
+    nodeinfo->cpus =
+        nodeinfo->nodes *
+        nodeinfo->sockets *
+        nodeinfo->cores *
+        nodeinfo->threads;
+
+    xmlXPathFreeContext(ctxt);
+    xmlFreeDoc(doc);
+    return 0;
+
+error:
+    nodeReportError(VIR_ERR_INTERNAL_ERROR, "%s",
+                         _("failed to get CPU topology"));
+    xmlXPathFreeContext(ctxt);
+    xmlFreeDoc(doc);
+    return -1;
+}
+
+static int
+freebsdNodeInfoCPUPopulate(virNodeInfoPtr nodeinfo)
+{
+    int ret;
+    char *xml;
+    size_t xml_len;
+
+    /*
+     * Topology is available through the kern.sched.topology_spec sysctl
+     * and is expressed in an XML document.
+     */
+    ret = sysctlbyname("kern.sched.topology_spec", NULL, &xml_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get CPU topology"));
+        return -1;
+    }
+
+    if (VIR_ALLOC_N(xml, xml_len + 1) < 0) {
+        virReportOOMError();
+        return -1;
+    }
+
+    ret = sysctlbyname("kern.sched.topology_spec", xml, &xml_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get CPU topology"));
+        VIR_FREE(xml);
+        return -1;
+    }
+    xml[xml_len] = '\0';
+
+    ret = freebsdParseTopologyXML(xml, nodeinfo);
+
+    VIR_FREE(xml);
+
+    return ret;
+}
+
+static int
+freebsdNodeInfoMhzPopulate(virNodeInfoPtr nodeinfo)
+{
+    int ret;
+    size_t mem_len;
+
+    /* Get physical memory from hw.physmem sysctl. */
+    mem_len = sizeof(nodeinfo->mhz);
+    ret = sysctlbyname("hw.clockrate", (void *)&(nodeinfo->mhz), &mem_len,
+        NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get processor frequency"));
+        return -1;
+    }
+
+    return 0;
+}
 #endif
 
 int nodeGetInfo(virConnectPtr conn ATTRIBUTE_UNUSED, virNodeInfoPtr nodeinfo) {
@@ -724,6 +872,24 @@ cleanup:
     VIR_FORCE_FCLOSE(cpuinfo);
     return ret;
     }
+#elif defined(__FreeBSD__)
+    {
+        int ret;
+
+        ret = freebsdNodeInfoMemoryPopulate(nodeinfo);
+        if (ret == -1)
+            return -1;
+
+        ret = freebsdNodeInfoCPUPopulate(nodeinfo);
+        if (ret == -1)
+            return -1;
+
+        ret = freebsdNodeInfoMhzPopulate(nodeinfo);
+        if (ret == -1)
+            return -1;
+    }
+
+    return 0;
 #else
     /* XXX Solaris will need an impl later if they port QEMU driver */
     nodeReportError(VIR_ERR_NO_SUPPORT, "%s",
