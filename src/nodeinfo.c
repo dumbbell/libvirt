@@ -699,6 +699,8 @@ error:
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
+#define FREEBSD_NB_MEMORY_STATS_ALL 2
+
 static int
 freebsdNodeInfoMemoryPopulate(virNodeInfoPtr nodeinfo)
 {
@@ -838,6 +840,76 @@ freebsdNodeInfoMhzPopulate(virNodeInfoPtr nodeinfo)
         virReportSystemError(errno, "%s",
                              _("failed to get processor frequency"));
         return -1;
+    }
+
+    return 0;
+}
+
+static int
+freebsdNodeGetMemoryStats(virNodeMemoryStatsPtr params, int *nparams)
+{
+    int i, ret, nr_param;
+    size_t page_size, sysctl_len;
+    virNodeMemoryStatsPtr param;
+
+    struct vm_sysctl {
+        const char *sysctl;
+        const char *field;
+    } vm_sysctls[] = {
+        {"vm.stats.vm.v_page_count", VIR_NODE_MEMORY_STATS_TOTAL},
+        {"vm.stats.vm.v_free_count", VIR_NODE_MEMORY_STATS_FREE},
+        {NULL,                       NULL}
+    };
+
+    nr_param = FREEBSD_NB_MEMORY_STATS_ALL;
+
+    if ((*nparams) == 0) {
+        *nparams = nr_param;
+        return 0;
+    }
+
+    if ((*nparams) != nr_param) {
+        virReportInvalidArg(nparams,
+                            _("nparams in %s must be %d"),
+                            __FUNCTION__, nr_param);
+        return -1;
+    }
+
+    /* We need the page size, because statistics are based on pages, not
+     * bytes. */
+    page_size = 0;
+    sysctl_len = sizeof(page_size);
+    ret = sysctlbyname("vm.stats.vm.v_page_size",
+        (void *)&page_size, &sysctl_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get memory page size"));
+        return -1;
+    }
+
+    for (i = 0; vm_sysctls[i].sysctl != NULL; ++i) {
+        struct vm_sysctl *sysctlp = &vm_sysctls[i];
+
+        param = &params[i];
+
+        if (virStrcpyStatic(param->field, sysctlp->field) == NULL) {
+            nodeReportError(VIR_ERR_INTERNAL_ERROR,
+                            "%s",
+                            _("Field kernel memory too long for destination"));
+            return -1;
+        }
+
+        param->value = 0;
+        sysctl_len = sizeof(param->value);
+        ret = sysctlbyname(sysctlp->sysctl,
+            (void *)&(param->value), &sysctl_len, NULL, 0);
+        if (ret == -1) {
+            virReportSystemError(errno, "%s",
+                                 _("failed to get memory stats"));
+            return -1;
+        }
+
+	param->value = param->value * page_size / 1024;
     }
 
     return 0;
@@ -986,6 +1058,20 @@ int nodeGetMemoryStats(virConnectPtr conn ATTRIBUTE_UNUSED,
         ret = linuxNodeGetMemoryStats(meminfo, cellNum, params, nparams);
         VIR_FORCE_FCLOSE(meminfo);
         VIR_FREE(meminfo_path);
+
+        return ret;
+    }
+#elif defined(__FreeBSD__)
+    {
+        int ret;
+
+        if (cellNum != VIR_NODE_MEMORY_STATS_ALL_CELLS) {
+            nodeReportError(VIR_ERR_INTERNAL_ERROR,
+                            "%s", _("NUMA not supported on this host"));
+            return -1;
+        }
+
+        ret = freebsdNodeGetMemoryStats(params, nparams);
 
         return ret;
     }
