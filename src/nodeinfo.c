@@ -692,7 +692,7 @@ error:
     VIR_FREE(map);
     return NULL;
 }
-#else
+#elif defined(__FreeBSD__)
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
