@@ -877,15 +877,7 @@ freebsdNodeGetMemoryStats(virNodeMemoryStatsPtr params, int *nparams)
 
     /* We need the page size, because statistics are based on pages, not
      * bytes. */
-    page_size = 0;
-    sysctl_len = sizeof(page_size);
-    ret = sysctlbyname("vm.stats.vm.v_page_size",
-        (void *)&page_size, &sysctl_len, NULL, 0);
-    if (ret == -1) {
-        virReportSystemError(errno, "%s",
-                             _("failed to get memory page size"));
-        return -1;
-    }
+    page_size = getpagesize();
 
     for (i = 0; vm_sysctls[i].sysctl != NULL; ++i) {
         struct vm_sysctl *sysctlp = &vm_sysctls[i];
