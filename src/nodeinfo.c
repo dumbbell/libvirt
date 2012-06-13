@@ -707,6 +707,7 @@ freebsdNodeInfoMemoryPopulate(virNodeInfoPtr nodeinfo)
     size_t mem_len;
 
     /* Get physical memory from hw.physmem sysctl. */
+    nodeinfo->memory = 0;
     mem_len = sizeof(nodeinfo->memory);
     ret = sysctl(mib, 2, (void *)&(nodeinfo->memory), &mem_len, NULL, 0);
     if (ret == -1) {
@@ -829,6 +830,7 @@ freebsdNodeInfoMhzPopulate(virNodeInfoPtr nodeinfo)
     size_t mem_len;
 
     /* Get physical memory from hw.physmem sysctl. */
+    nodeinfo->mhz = 0;
     mem_len = sizeof(nodeinfo->mhz);
     ret = sysctlbyname("hw.clockrate", (void *)&(nodeinfo->mhz), &mem_len,
         NULL, 0);
