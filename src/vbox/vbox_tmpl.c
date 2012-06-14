@@ -9314,6 +9314,8 @@ virDriver NAME(Driver) = {
     .domainRevertToSnapshot = vboxDomainRevertToSnapshot, /* 0.8.0 */
     .domainSnapshotDelete = vboxDomainSnapshotDelete, /* 0.8.0 */
     .isAlive = vboxIsAlive, /* 0.9.8 */
+    .nodeGetCPUStats = nodeGetCPUStats, /* 0.9.3 */
+    .nodeGetMemoryStats = nodeGetMemoryStats, /* 0.9.3 */
 };
 
 virNetworkDriver NAME(NetworkDriver) = {
