@@ -24,6 +24,9 @@
 #include <config.h>
 
 #include <sys/types.h>
+#if defined(__FreeBSD__)
+#include <sys/socket.h>
+#endif
 #include <sys/poll.h>
 #include <limits.h>
 #include <string.h>
