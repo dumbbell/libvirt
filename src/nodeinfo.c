@@ -693,12 +693,14 @@ error:
     return NULL;
 }
 #elif defined(__FreeBSD__)
+#include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
 #include <libxml/parser.h>
 #include <libxml/tree.h>
 
+#define FREEBSD_NB_CPU_STATS_ALL 3
 #define FREEBSD_NB_MEMORY_STATS_ALL 2
 
 static int
@@ -846,6 +848,112 @@ freebsdNodeInfoMhzPopulate(virNodeInfoPtr nodeinfo)
 }
 
 static int
+freebsdNodeGetCPUStats(int cpuNum, virNodeCPUStatsPtr params, int *nparams)
+{
+    int ret, nr_param, ncpu, i, j;
+    size_t sysctl_len, cp_times_len;
+    long *cp_times;
+
+    nr_param = FREEBSD_NB_CPU_STATS_ALL;
+
+    if ((*nparams) == 0) {
+        *nparams = nr_param;
+        return 0;
+    }
+
+    if ((*nparams) != nr_param) {
+        virReportInvalidArg(nparams,
+                            _("nparams in %s must be %d"),
+                            __FUNCTION__, nr_param);
+        return -1;
+    }
+
+    /*
+     * CPU times are available through the ker.cp_times sysctl which is
+     * an array of integers.
+     */
+    ncpu = 0;
+    sysctl_len = sizeof(ncpu);
+    ret = sysctlbyname("hw.ncpu", &ncpu, &sysctl_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get CPU count"));
+        return -1;
+    }
+
+    cp_times_len = sizeof(long) * (ncpu + 1) * CPUSTATES;
+
+    if (VIR_ALLOC_N(cp_times, cp_times_len) < 0) {
+        virReportOOMError();
+        return -1;
+    }
+    memset(cp_times, 0, cp_times_len);
+
+    ret = sysctlbyname("kern.cp_times", cp_times, &cp_times_len,
+        NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get CPU times"));
+        VIR_FREE(cp_times);
+        return -1;
+    }
+
+    if (cpuNum == VIR_NODE_CPU_STATS_ALL_CPUS) {
+        for (i = 0; i < CPUSTATES; ++i) {
+            for (j = 0; j < ncpu; ++j) {
+                cp_times[ncpu * CPUSTATES + i] += cp_times[j * CPUSTATES + i];
+            }
+            cp_times[ncpu * CPUSTATES + i] /= ncpu;
+        }
+        cpuNum = ncpu;
+    }
+
+    for (i = 0; i < *nparams; ++i) {
+        virNodeCPUStatsPtr param = &params[i];
+
+        switch(i) {
+        case 0: /* Kernel CPU time. */
+            if (virStrcpyStatic(param->field, VIR_NODE_CPU_STATS_KERNEL) == NULL) {
+                nodeReportError(VIR_ERR_INTERNAL_ERROR,
+                                "%s", _("Field kernel cpu time too long for destination"));
+                VIR_FREE(cp_times);
+                return -1;
+            }
+            param->value =
+                cp_times[cpuNum * CPUSTATES + CP_SYS] +
+                cp_times[cpuNum * CPUSTATES + CP_INTR];
+            break;
+        case 1: /* User CPU time. */
+            if (virStrcpyStatic(param->field, VIR_NODE_CPU_STATS_USER) == NULL) {
+                nodeReportError(VIR_ERR_INTERNAL_ERROR,
+                                "%s", _("Field kernel cpu time too long for destination"));
+                VIR_FREE(cp_times);
+                return -1;
+            }
+            param->value =
+                cp_times[cpuNum * CPUSTATES + CP_USER] +
+                cp_times[cpuNum * CPUSTATES + CP_NICE];
+            break;
+        case 2: /* Idle CPU time. */
+            if (virStrcpyStatic(param->field, VIR_NODE_CPU_STATS_IDLE) == NULL) {
+                nodeReportError(VIR_ERR_INTERNAL_ERROR,
+                                "%s", _("Field kernel cpu time too long for destination"));
+                VIR_FREE(cp_times);
+                return -1;
+            }
+            param->value = cp_times[cpuNum * CPUSTATES + CP_IDLE];
+            break;
+        default:
+            break;
+        }
+    }
+
+    VIR_FREE(cp_times);
+
+    return 0;
+}
+
+static int
 freebsdNodeGetMemoryStats(virNodeMemoryStatsPtr params, int *nparams)
 {
     int i, ret, nr_param;
@@ -983,6 +1091,14 @@ int nodeGetCPUStats(virConnectPtr conn ATTRIBUTE_UNUSED,
         }
         ret = linuxNodeGetCPUStats(procstat, cpuNum, params, nparams);
         VIR_FORCE_FCLOSE(procstat);
+
+        return ret;
+    }
+#elif defined(__FreeBSD__)
+    {
+        int ret;
+
+        ret = freebsdNodeGetCPUStats(cpuNum, params, nparams);
 
         return ret;
     }
