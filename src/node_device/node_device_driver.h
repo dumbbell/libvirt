@@ -62,6 +62,17 @@ int check_vport_capable_linux(union _virNodeDevCapData *d);
 #  define read_wwn(host, file, wwn) read_wwn_linux(host, file, wwn)
 int read_wwn_linux(int host, const char *file, char **wwn);
 
+# elif defined(__FreeBSD__)
+
+#  define check_fc_host(d) check_fc_host_freebsd(d)
+int check_fc_host_freebsd(union _virNodeDevCapData *d);
+
+#  define check_vport_capable(d) check_vport_capable_freebsd(d)
+int check_vport_capable_freebsd(union _virNodeDevCapData *d);
+
+#  define read_wwn(host, file, wwn) read_wwn_freebsd(host, file, wwn)
+int read_wwn_freebsd(int host, const char *file, char **wwn);
+
 # else  /* __linux__ */
 
 #  define check_fc_host(d)                      (-1)
