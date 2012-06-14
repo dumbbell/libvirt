@@ -853,6 +853,7 @@ freebsdNodeGetCPUStats(int cpuNum, virNodeCPUStatsPtr params, int *nparams)
     int ret, nr_param, ncpu, i, j;
     size_t sysctl_len, cp_times_len;
     long *cp_times;
+    struct clockinfo clocks;
 
     nr_param = FREEBSD_NB_CPU_STATS_ALL;
 
@@ -872,6 +873,14 @@ freebsdNodeGetCPUStats(int cpuNum, virNodeCPUStatsPtr params, int *nparams)
      * CPU times are available through the ker.cp_times sysctl which is
      * an array of integers.
      */
+    sysctl_len = sizeof(clocks);
+    ret = sysctlbyname("kern.clockrate", &clocks, &sysctl_len, NULL, 0);
+    if (ret == -1) {
+        virReportSystemError(errno, "%s",
+                             _("failed to get clock rates"));
+        return -1;
+    }
+
     ncpu = 0;
     sysctl_len = sizeof(ncpu);
     ret = sysctlbyname("hw.ncpu", &ncpu, &sysctl_len, NULL, 0);
@@ -946,6 +955,9 @@ freebsdNodeGetCPUStats(int cpuNum, virNodeCPUStatsPtr params, int *nparams)
         default:
             break;
         }
+
+        /* Convert from ticks to nanoseconds. */
+        param->value *= 1000000000 / clocks.stathz;
     }
 
     VIR_FREE(cp_times);
