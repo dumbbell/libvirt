@@ -817,7 +817,7 @@ cleanup:
 
 static void virLogStackTraceToFd(int fd)
 {
-#ifdef HAVE_EXECINFO_H
+#ifdef TEST_OOM_TRACE
     void *array[100];
     int size;
 
