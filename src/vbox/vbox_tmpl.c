@@ -8676,8 +8676,10 @@ static virStorageVolPtr vboxStorageVolLookupByKey(virConnectPtr conn, const char
 
             if (hddNameUtf8) {
                 if (vboxStorageNumOfPools(conn) == 1) {
-                    ret = virGetStorageVol(conn, "default-pool", hddNameUtf8, key);
-                    VIR_DEBUG("Storage Volume Pool: %s", "default-pool");
+                    ret = virGetStorageVol(conn, VBOX_DEFAULT_STORAGE_POOL,
+                        hddNameUtf8, key);
+                    VIR_DEBUG("Storage Volume Pool: %s",
+                        VBOX_DEFAULT_STORAGE_POOL);
                 } else {
                     /* TODO: currently only one default pool and thus
                      * nothing here, change it when pools are supported
@@ -8748,9 +8750,10 @@ static virStorageVolPtr vboxStorageVolLookupByPath(virConnectPtr conn, const cha
                      * the check below, change it when pools are supported
                      */
                     if (vboxStorageNumOfPools(conn) == 1)
-                        ret = virGetStorageVol(conn, "default-pool", hddNameUtf8, key);
+                        ret = virGetStorageVol(conn, VBOX_DEFAULT_STORAGE_POOL,
+                            hddNameUtf8, key);
 
-                    VIR_DEBUG("Storage Volume Pool: %s", "default-pool");
+                    VIR_DEBUG("Storage Volume Pool: %s", VBOX_DEFAULT_STORAGE_POOL);
                     VIR_DEBUG("Storage Volume Name: %s", hddNameUtf8);
                     VIR_DEBUG("Storage Volume key : %s", key);
                 }
