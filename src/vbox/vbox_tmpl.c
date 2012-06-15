@@ -8798,6 +8798,8 @@ static virStorageVolPtr vboxStorageVolCreateXML(virStoragePoolPtr pool,
     virStorageVolDefPtr  def  = NULL;
     PRUnichar *hddFormatUtf16 = NULL;
     PRUnichar *hddNameUtf16   = NULL;
+    char *machineFolder = NULL, *absPath = NULL;
+    size_t machineFolderLen, nameLen, absPathLen;
     virStoragePoolDef poolDef;
     nsresult rc;
 
@@ -8833,7 +8835,23 @@ static virStorageVolPtr vboxStorageVolCreateXML(virStoragePoolPtr pool,
         VBOX_UTF8_TO_UTF16("VDI", &hddFormatUtf16);
     }
 
-    VBOX_UTF8_TO_UTF16(def->name, &hddNameUtf16);
+    /* Prepend machine folder to volume name. */
+    machineFolder = vboxGetMachineFolder(pool);
+    if (machineFolder == NULL)
+        goto cleanup;
+    machineFolderLen = strlen(machineFolder);
+    nameLen          = strlen(def->name);
+    absPathLen       = machineFolderLen + 1 + nameLen;
+    if (VIR_ALLOC_N(absPath, absPathLen + 1) < 0)
+        goto cleanup;
+    strncpy(absPath, machineFolder, machineFolderLen);
+    absPath[machineFolderLen] = '/';
+    strncpy(absPath + machineFolderLen + 1, def->name, nameLen);
+    absPath[absPathLen] = '\0';
+    VBOX_UTF8_FREE(machineFolder);
+
+    VBOX_UTF8_TO_UTF16(absPath, &hddNameUtf16);
+    free(absPath);
 
     if (hddFormatUtf16 && hddNameUtf16) {
         IHardDisk *hardDisk = NULL;
