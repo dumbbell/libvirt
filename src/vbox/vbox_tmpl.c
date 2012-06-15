@@ -85,6 +85,7 @@
 /* Include this *last* or we'll get the wrong vbox_CAPI_*.h. */
 #include "vbox_glue.h"
 
+#define VBOX_DEFAULT_STORAGE_POOL "default"
 
 #define VIR_FROM_THIS                   VIR_FROM_VBOX
 #define VBOX_UTF16_FREE(arg)            data->pFuncs->pfnUtf16Free(arg)
@@ -8323,7 +8324,7 @@ static int vboxStorageListPools(virConnectPtr conn ATTRIBUTE_UNUSED,
     int numActive = 0;
 
     if (nnames == 1) {
-        names[numActive] = strdup("default-pool");
+        names[numActive] = strdup(VBOX_DEFAULT_STORAGE_POOL);
         if (names[numActive] == NULL) {
             virReportOOMError();
         } else {
@@ -8340,7 +8341,7 @@ static virStoragePoolPtr vboxStoragePoolLookupByName(virConnectPtr conn, const c
      * the default pool doesn't have UUID just assign
      * one till vbox can handle pools
      */
-    if (STREQ("default-pool", name)) {
+    if (STREQ(VBOX_DEFAULT_STORAGE_POOL, name)) {
         unsigned char uuid[VIR_UUID_BUFLEN];
         const char *uuidstr = "1deff1ff-1481-464f-967f-a50fe8936cc4";
 
