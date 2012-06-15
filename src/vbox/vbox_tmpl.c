@@ -40,6 +40,13 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#if defined(__linux__)
+#include <sys/vfs.h>
+#elif defined(__FreeBSD__)
+#include <sys/param.h>
+#include <sys/mount.h>
+#endif
+
 #include "internal.h"
 #include "datatypes.h"
 #include "domain_conf.h"
@@ -8291,6 +8298,26 @@ static int vboxStorageNumOfPools(virConnectPtr conn ATTRIBUTE_UNUSED) {
     return 1;
 }
 
+static int vboxNumberOfDefinedStoragePools(virConnectPtr conn ATTRIBUTE_UNUSED)
+{
+
+    return 0;
+}
+
+static int vboxListDefinedStoragePools(virConnectPtr conn ATTRIBUTE_UNUSED,
+    char **const names ATTRIBUTE_UNUSED, int maxnames ATTRIBUTE_UNUSED)
+{
+
+    return 0;
+}
+
+static int vboxStoragePoolRefresh(virStoragePoolPtr pool ATTRIBUTE_UNUSED,
+    unsigned int flags ATTRIBUTE_UNUSED)
+{
+
+    return 0;
+}
+
 static int vboxStorageListPools(virConnectPtr conn ATTRIBUTE_UNUSED,
                                 char **const names, int nnames) {
     int numActive = 0;
@@ -8323,6 +8350,136 @@ static virStoragePoolPtr vboxStoragePoolLookupByName(virConnectPtr conn, const c
     }
 
     return ret;
+}
+
+static char * vboxGetMachineFolder(virStoragePoolPtr pool)
+{
+    ISystemProperties *systemProperties = NULL;
+    PRUnichar *machineFolderUtf16 = NULL;
+    char *machineFolderUtf8 = NULL;
+    VBOX_OBJECT_CHECK(pool->conn, char *, NULL);
+
+    /* Get the folder where VirtualBox stores VMs by default. */
+    data->vboxObj->vtbl->GetSystemProperties(data->vboxObj, &systemProperties);
+    if (!systemProperties)
+        return NULL;
+
+    systemProperties->vtbl->GetDefaultMachineFolder(systemProperties,
+        &machineFolderUtf16);
+    VBOX_RELEASE(systemProperties);
+
+    VBOX_UTF16_TO_UTF8(machineFolderUtf16, &machineFolderUtf8);
+    VBOX_UTF16_FREE(machineFolderUtf16);
+
+    return machineFolderUtf8;
+}
+
+static int vboxGetPoolCapacity(const char *machineFolder,
+    unsigned long long *capacity,
+    unsigned long long *allocation,
+    unsigned long long *available)
+{
+    int ret;
+    struct statfs statbuf;
+
+    /* Get statistics for this filesystem. */
+    memset(&statbuf, 0, sizeof(statbuf));
+    ret = statfs(machineFolder, &statbuf);
+
+    if (ret == 0) {
+        *capacity   = statbuf.f_blocks * statbuf.f_bsize;
+        *available  = statbuf.f_bavail * statbuf.f_bsize;
+        *allocation =
+            (statbuf.f_blocks - statbuf.f_bfree) * statbuf.f_bsize;
+
+        return 0;
+    } else {
+        vboxError(VIR_ERR_INTERNAL_ERROR,
+                  _("Failed to get pool capacity (%s): %s"),
+                  machineFolder, strerror(errno));
+
+        return -1;
+    }
+}
+
+static int vboxStoragePoolGetInfo(virStoragePoolPtr pool,
+    virStoragePoolInfoPtr info)
+{
+    char *machineFolder = NULL;
+    VBOX_OBJECT_CHECK(pool->conn, int, -1);
+
+    memset(info, 0, sizeof(*info));
+
+    /* Get the folder where VirtualBox stores VMs by default. */
+    machineFolder = vboxGetMachineFolder(pool);
+    if (machineFolder == NULL)
+        return -1;
+
+    /* Get statistics for this filesystem. */
+    vboxGetPoolCapacity(machineFolder,
+        &(info->capacity), &(info->allocation), &(info->available));
+    VBOX_UTF8_FREE(machineFolder);
+
+    info->state = VIR_STORAGE_POOL_RUNNING;
+
+    return 0;
+}
+
+static char * vboxStoragePoolGetXMLDesc(virStoragePoolPtr pool,
+    unsigned int flags ATTRIBUTE_UNUSED)
+{
+    int rc;
+    virStoragePoolDef def;
+    char *machineFolder;
+    char *xml = NULL;
+    struct stat statbuf;
+    VBOX_OBJECT_CHECK(pool->conn, char *, NULL);
+
+    memset(&def, 0, sizeof(def));
+
+    def.name = pool->name;
+    memcpy(def.uuid, pool->uuid, VIR_UUID_BUFLEN);
+    def.type = VIR_STORAGE_POOL_DIR;
+
+    /* Get the folder where VirtualBox stores VMs by default. */
+    machineFolder = vboxGetMachineFolder(pool);
+    if (machineFolder == NULL)
+        return NULL;
+    def.target.path = machineFolder;
+
+    /* Get statistics for this filesystem. */
+    vboxGetPoolCapacity(machineFolder,
+        &(def.capacity), &(def.allocation), &(def.available));
+
+    /* Get stats for the machine folder. */
+    memset(&statbuf, 0, sizeof(statbuf));
+    rc = stat(machineFolder, &statbuf);
+    if (rc == 0) {
+        def.target.perms.mode = statbuf.st_mode;
+        def.target.perms.uid = statbuf.st_uid;
+        def.target.perms.gid = statbuf.st_gid;
+    }
+
+    xml = virStoragePoolDefFormat(&def);
+
+    VBOX_UTF8_FREE(machineFolder);
+
+    return xml;
+}
+
+static int vboxStoragePoolGetAutostart(virStoragePoolPtr pool ATTRIBUTE_UNUSED,
+    int *autostart)
+{
+
+    *autostart = 1;
+
+    return 0;
+}
+
+static int vboxStoragePoolIsPersistent(virStoragePoolPtr pool ATTRIBUTE_UNUSED)
+{
+
+    return 1;
 }
 
 static int vboxStoragePoolNumOfVolumes(virStoragePoolPtr pool) {
@@ -9342,9 +9499,16 @@ virStorageDriver NAME(StorageDriver) = {
     .close              = vboxStorageClose, /* 0.7.1 */
     .numOfPools         = vboxStorageNumOfPools, /* 0.7.1 */
     .listPools          = vboxStorageListPools, /* 0.7.1 */
+    .numOfDefinedPools  = vboxNumberOfDefinedStoragePools, /* 0.8.2 */
+    .listDefinedPools   = vboxListDefinedStoragePools, /* 0.8.2 */
     .poolLookupByName   = vboxStoragePoolLookupByName, /* 0.7.1 */
+    .poolRefresh        = vboxStoragePoolRefresh, /* 0.8.2 */
+    .poolGetInfo        = vboxStoragePoolGetInfo, /* 0.8.2 */
+    .poolGetXMLDesc     = vboxStoragePoolGetXMLDesc, /* 0.8.2 */
     .poolNumOfVolumes   = vboxStoragePoolNumOfVolumes, /* 0.7.1 */
     .poolListVolumes    = vboxStoragePoolListVolumes, /* 0.7.1 */
+    .poolGetAutostart   = vboxStoragePoolGetAutostart, /* 0.8.2 */
+    .poolIsPersistent   = vboxStoragePoolIsPersistent, /* 0.8.2 */
 
     .volLookupByName    = vboxStorageVolLookupByName, /* 0.7.1 */
     .volLookupByKey     = vboxStorageVolLookupByKey, /* 0.7.1 */
