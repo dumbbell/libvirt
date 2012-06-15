@@ -8488,6 +8488,12 @@ static int vboxStoragePoolGetAutostart(virStoragePoolPtr pool ATTRIBUTE_UNUSED,
     return 0;
 }
 
+static int vboxStoragePoolIsActive(virStoragePoolPtr pool ATTRIBUTE_UNUSED)
+{
+
+    return 1;
+}
+
 static int vboxStoragePoolIsPersistent(virStoragePoolPtr pool ATTRIBUTE_UNUSED)
 {
 
@@ -9533,6 +9539,7 @@ virStorageDriver NAME(StorageDriver) = {
     .poolNumOfVolumes   = vboxStoragePoolNumOfVolumes, /* 0.7.1 */
     .poolListVolumes    = vboxStoragePoolListVolumes, /* 0.7.1 */
     .poolGetAutostart   = vboxStoragePoolGetAutostart, /* 0.8.2 */
+    .poolIsActive       = vboxStoragePoolIsActive, /* 0.8.2 */
     .poolIsPersistent   = vboxStoragePoolIsPersistent, /* 0.8.2 */
 
     .volLookupByName    = vboxStorageVolLookupByName, /* 0.7.1 */
