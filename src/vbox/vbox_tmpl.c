@@ -8635,6 +8635,9 @@ static virStorageVolPtr vboxStorageVolLookupByName(virStoragePoolPtr pool, const
         }
 
         vboxArrayRelease(&hardDisks);
+    } else {
+        vboxError(VIR_ERR_NO_STORAGE_VOL,
+                  _("no storage vol with matching name '%s'"), name);
     }
 
     return ret;
@@ -8695,6 +8698,9 @@ static virStorageVolPtr vboxStorageVolLookupByKey(virConnectPtr conn, const char
         }
 
         VBOX_MEDIUM_RELEASE(hardDisk);
+    } else {
+        vboxError(VIR_ERR_NO_STORAGE_VOL,
+                  _("no storage vol with matching key '%s'"), key);
     }
 
     vboxIIDUnalloc(&hddIID);
@@ -8766,6 +8772,9 @@ static virStorageVolPtr vboxStorageVolLookupByPath(virConnectPtr conn, const cha
         }
 
         VBOX_MEDIUM_RELEASE(hardDisk);
+    } else {
+        vboxError(VIR_ERR_NO_STORAGE_VOL,
+                  _("no storage vol with matching path '%s'"), path);
     }
 
     VBOX_UTF16_FREE(hddPathUtf16);
