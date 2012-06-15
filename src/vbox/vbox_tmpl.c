@@ -7639,6 +7639,15 @@ static int vboxListDefinedNetworks(virConnectPtr conn, char **const names, int n
     return ret;
 }
 
+static int
+vboxNetworkGetAutostart(virNetworkPtr network ATTRIBUTE_UNUSED, int *autostart)
+{
+
+    *autostart = 1;
+
+    return 0;
+}
+
 static virNetworkPtr
 vboxNetworkLookupByUUID(virConnectPtr conn, const unsigned char *uuid)
 {
@@ -9484,6 +9493,7 @@ virNetworkDriver NAME(NetworkDriver) = {
     .listNetworks           = vboxListNetworks, /* 0.6.4 */
     .numOfDefinedNetworks   = vboxNumOfDefinedNetworks, /* 0.6.4 */
     .listDefinedNetworks    = vboxListDefinedNetworks, /* 0.6.4 */
+    .networkGetAutostart    = vboxNetworkGetAutostart, /* 0.3.0 */
     .networkLookupByUUID    = vboxNetworkLookupByUUID, /* 0.6.4 */
     .networkLookupByName    = vboxNetworkLookupByName, /* 0.6.4 */
     .networkCreateXML       = vboxNetworkCreateXML, /* 0.6.4 */
