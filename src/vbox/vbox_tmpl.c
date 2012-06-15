@@ -2458,28 +2458,30 @@ static char *vboxDomainGetXMLDesc(virDomainPtr dom, unsigned int flags) {
 
                         if (STREQ(valueTypeUtf8, "sdl")) {
                             sdlPresent = 1;
-                            if (valueDisplayUtf8)
+                            if (valueDisplayUtf8) {
                                 sdlDisplay = strdup(valueDisplayUtf8);
-                            if (sdlDisplay == NULL) {
-                                virReportOOMError();
-                                /* just don't go to cleanup yet as it is ok to have
-                                 * sdlDisplay as NULL and we check it below if it
-                                 * exist and then only use it there
-                                 */
+                                if (sdlDisplay == NULL) {
+                                    virReportOOMError();
+                                    /* just don't go to cleanup yet as it is ok to have
+                                     * sdlDisplay as NULL and we check it below if it
+                                     * exist and then only use it there
+                                     */
+                                }
                             }
                             totalPresent++;
                         }
 
                         if (STREQ(valueTypeUtf8, "gui")) {
                             guiPresent = 1;
-                            if (valueDisplayUtf8)
+                            if (valueDisplayUtf8) {
                                 guiDisplay = strdup(valueDisplayUtf8);
-                            if (guiDisplay == NULL) {
-                                virReportOOMError();
-                                /* just don't go to cleanup yet as it is ok to have
-                                 * guiDisplay as NULL and we check it below if it
-                                 * exist and then only use it there
-                                 */
+                                if (guiDisplay == NULL) {
+                                    virReportOOMError();
+                                    /* just don't go to cleanup yet as it is ok to have
+                                     * guiDisplay as NULL and we check it below if it
+                                     * exist and then only use it there
+                                     */
+                                }
                             }
                             totalPresent++;
                         }
