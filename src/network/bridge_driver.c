@@ -1622,16 +1622,21 @@ cleanup:
     return ret;
 }
 
+#if defined(__linux__)
 #define PROC_NET_ROUTE "/proc/net/route"
+#endif
 
 /* XXX: This function can be a lot more exhaustive, there are certainly
  *      other scenarios where we can ruin host network connectivity.
  * XXX: Using a proper library is preferred over parsing /proc
  */
 static int
-networkCheckRouteCollision(virNetworkObjPtr network)
+networkCheckRouteCollision(virNetworkObjPtr network ATTRIBUTE_UNUSED)
 {
-    int ret = 0, len;
+    int ret = 0;
+
+#if defined(__linux__)
+    int len;
     char *cur, *buf = NULL;
     enum {MAX_ROUTE_SIZE = 1024*64};
 
@@ -1715,6 +1720,8 @@ networkCheckRouteCollision(virNetworkObjPtr network)
 
 out:
     VIR_FREE(buf);
+#endif /* defined(__linux__) */
+
     return ret;
 }
 
